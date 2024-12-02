@@ -5,19 +5,30 @@ import (
 	"net/http"
 )
 
-// Обработчик HTTP-запросов
-func handler(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("Hello " + r.URL.Query().Get("name") + "!"))
+// Middleware для CORS
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")                   // Разрешаем все origins
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS") // Разрешаем необходимые методы
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")       // Разрешаем заголовки
+		// Обрабатываем preflight запрос
+		if r.Method == http.MethodOptions {
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func helloHandler(w http.ResponseWriter, r *http.Request) {
+	name := r.URL.Query().Get("name")
+	if name == "" {
+		name = "World"
+	}
+	fmt.Fprintf(w, "Hello, %s!", name)
 }
 
 func main() {
-	// Регистрируем обработчик для пути "/"
-	http.HandleFunc("/api/user", handler)
-
-	// Запускаем веб-сервер на порту 8080
-	fmt.Println("starting server...")
-	err := http.ListenAndServe(":9000", nil)
-	if err != nil {
-		fmt.Println("Ошибка запуска сервера:", err)
-	}
+	http.Handle("/api/user", corsMiddleware(http.HandlerFunc(helloHandler)))
+	fmt.Println("Сервер запущен на порту :8081")
+	http.ListenAndServe(":8081", nil)
 }

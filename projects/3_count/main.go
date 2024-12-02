@@ -1,56 +1,60 @@
 package main
 
 import (
-	"fmt"
+	"encoding/json"
 	"net/http"
-	"strconv"
 	"sync"
 )
 
-// Счетчик и мьютекс для потокобезопасного доступа к счетчику
 var (
-	counter int
-	mu      sync.Mutex
+	count int
+	mu    sync.Mutex
 )
 
+func main() {
+	http.HandleFunc("/count", countHandler)
+	http.ListenAndServe(":3333", enableCors(http.DefaultServeMux))
+}
+
 func countHandler(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case http.MethodGet:
-		// Отправляем текущее значение счетчика
+	if r.Method == http.MethodGet {
 		mu.Lock()
 		defer mu.Unlock()
-		fmt.Fprintf(w, "Счетчик: %d", counter)
-	case http.MethodPost:
-		// Пытаемся получить значение count из формы
-		r.ParseForm()
-		countStr := r.FormValue("count")
-
-		// Преобразование строки в число
-		count, err := strconv.Atoi(countStr)
-		if err != nil {
-			http.Error(w, "Это не число", http.StatusBadRequest)
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(count)
+	} else if r.Method == http.MethodPost {
+		var req map[string]int
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "это не число", http.StatusBadRequest)
 			return
 		}
-
-		// Увеличиваем счетчик
+		value, exists := req["count"]
+		if !exists || value < 0 {
+			http.Error(w, "это не число", http.StatusBadRequest)
+			return
+		}
 		mu.Lock()
-		counter += count
+		count += value
 		mu.Unlock()
-
-		// Подтверждение успешного добавления
-		fmt.Fprintf(w, "Счетчик увеличен на %d. Текущее значение: %d", count, counter)
-	default:
-		http.Error(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
+		w.WriteHeader(http.StatusOK)
+	} else {
+		http.Error(w, "метод не поддерживается", http.StatusMethodNotAllowed)
 	}
 }
 
-func main() {
-	// Определяем обработчик для пути /count
-	http.HandleFunc("/count", countHandler)
+// enableCors добавляет заголовки CORS
+func enableCors(h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 
-	fmt.Println("Сервер запущен на порту :3333")
-	// Запускаем сервер на порту 3333
-	if err := http.ListenAndServe(":3333", nil); err != nil {
-		fmt.Println("Ошибка при запуске сервера:", err)
-	}
+		// Обработка preflight-запросов
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+
+		h.ServeHTTP(w, r)
+	})
 }
