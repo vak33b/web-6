@@ -2,59 +2,90 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
+	"io"
+	"log"
 	"net/http"
-	"sync"
+	"os"
 )
 
-var (
-	count int
-	mu    sync.Mutex
-)
+var counter int
 
 func main() {
-	http.HandleFunc("/count", countHandler)
-	http.ListenAndServe(":3333", enableCors(http.DefaultServeMux))
+	// Загрузка счетчика из файла (опционально)
+	loadCounterFromFile("counter.txt")
+
+	http.HandleFunc("/count", handleCount)
+	log.Fatal(http.ListenAndServe(":3333", nil))
 }
 
-func countHandler(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodGet {
-		mu.Lock()
-		defer mu.Unlock()
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(count)
-	} else if r.Method == http.MethodPost {
-		var req map[string]int
-		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+func handleCount(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case "GET":
+		fmt.Fprintln(w, counter) // Возвращаем счетчик
+
+	case "POST":
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			http.Error(w, "Ошибка чтения тела запроса", http.StatusInternalServerError)
+			return
+		}
+		defer r.Body.Close()
+
+		var data struct {
+			Count int `json:"count"`
+		}
+		err = json.Unmarshal(body, &data)
+		if err != nil {
+			http.Error(w, "Ошибка разбора JSON", http.StatusBadRequest)
+			return
+		}
+
+		if data.Count == 0 {
 			http.Error(w, "это не число", http.StatusBadRequest)
 			return
 		}
-		value, exists := req["count"]
-		if !exists || value < 0 {
-			http.Error(w, "это не число", http.StatusBadRequest)
-			return
-		}
-		mu.Lock()
-		count += value
-		mu.Unlock()
-		w.WriteHeader(http.StatusOK)
-	} else {
-		http.Error(w, "метод не поддерживается", http.StatusMethodNotAllowed)
+		counter += data.Count
+		saveCounterToFile("counter.txt")
+		fmt.Fprintln(w, counter)
+
+	default:
+		http.Error(w, "Недопустимый метод", http.StatusMethodNotAllowed)
 	}
 }
 
-// enableCors добавляет заголовки CORS
-func enableCors(h http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-		// Обработка preflight-запросов
-		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusNoContent)
+func loadCounterFromFile(filename string) {
+	file, err := os.Open(filename)
+	if err != nil {
+		if os.IsNotExist(err) {
+			log.Println("Файл счетчика не найден, устанавливаем значение 0")
 			return
 		}
+		log.Printf("Ошибка открытия файла: %v", err)
+		return
+	}
+	defer file.Close()
 
-		h.ServeHTTP(w, r)
-	})
+	_, err = fmt.Fscanln(file, &counter)
+	if err != nil {
+		log.Printf("Ошибка чтения файла: %v", err)
+		return
+	}
+	log.Println("Значение счетчика загружено из файла")
+}
+
+func saveCounterToFile(filename string) {
+	file, err := os.Create(filename)
+	if err != nil {
+		log.Printf("Ошибка создания файла: %v", err)
+		return
+	}
+	defer file.Close()
+
+	_, err = fmt.Fprintln(file, counter)
+	if err != nil {
+		log.Printf("Ошибка записи в файл: %v", err)
+		return
+	}
+	log.Println("Счетчик сохранен в файл")
 }

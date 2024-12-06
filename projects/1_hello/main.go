@@ -17,14 +17,14 @@ func helloHandler(w http.ResponseWriter, r *http.Request) {
 func main() {
 	http.HandleFunc("/get", helloHandler)
 
-	fmt.Println("Сервер запущен на порту :8080")
+	fmt.Println("Сервер запущен на порту :8082")
 
 	// Разрешаем CORS
 	headersOk := handlers.AllowedHeaders([]string{"X-Requested-With", "Content-Type", "Authorization"})
 	originsOk := handlers.AllowedOrigins([]string{"*"})
 	methodsOk := handlers.AllowedMethods([]string{"GET", "OPTIONS"})
 
-	if err := http.ListenAndServe(":8080", handlers.CORS(originsOk, headersOk, methodsOk)(http.DefaultServeMux)); err != nil {
+	if err := http.ListenAndServe(":8082", handlers.CORS(originsOk, headersOk, methodsOk)(http.DefaultServeMux)); err != nil {
 		fmt.Println("Ошибка запуска сервера:", err)
 	}
 }

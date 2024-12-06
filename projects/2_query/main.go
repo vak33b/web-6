@@ -29,6 +29,6 @@ func helloHandler(w http.ResponseWriter, r *http.Request) {
 
 func main() {
 	http.Handle("/api/user", corsMiddleware(http.HandlerFunc(helloHandler)))
-	fmt.Println("Сервер запущен на порту :8081")
-	http.ListenAndServe(":8081", nil)
+	fmt.Println("Сервер запущен на порту :8083")
+	http.ListenAndServe(":8083", nil)
 }
